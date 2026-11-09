@@ -40,7 +40,7 @@ Os arquivos marcados como planejados ainda não foram criados. Cada integrante p
 | `FakeNews.py` | Referência do professor | Código sequencial original preservado |
 | `sequencial.py`, `testes.py` | Integrante 1 | Refatoração, configuração e validação — planejados |
 | `paralelo.py` | Integrante 2 | Divisão de linhas com `threading` — planejado |
-| `distribuido.py`, `worker.py` | Integrante 3 — Thiago | Coordenador e trabalhadores com `socket` — planejados |
+| `distribuido.py`, `worker.py` | Integrante 3 | Coordenador e trabalhadores com `socket` — planejados |
 | `benchmark.py`, `resultados/` | Integrante 4 | Medições, tabelas e gráficos — implementação planejada |
 | `melhorias.py` | Integrante 5 | Extensões opcionais — planejado |
 | `docs/` | Equipe | Contrato, testes, referências e decisões técnicas |
@@ -65,7 +65,7 @@ Consulte [o contrato e as decisões de integração](docs/CONTRATO.md), incluind
 
 ## Desenvolvimento em equipe
 
-Usar branches no padrão `nome/arquivo-arquivo`, em minúsculas, sem acentos, espaços ou extensão `.py`. Exemplo da parte distribuída: `thiago/distribuido-worker`. Para documentação: `thiago/readme-organizacao`.
+Usar branches no padrão `nome/arquivo-arquivo`, em minúsculas, sem acentos, espaços ou extensão `.py`. Exemplo da parte distribuída: `nome/distribuido-worker`. Para documentação: `nome/readme-organizacao`.
 
 Ao concluir uma entrega, abrir um Pull Request para `main`, descrever as mudanças e os testes e solicitar revisão a outro integrante. O [guia de contribuição](CONTRIBUTING.md) apresenta os comandos. Revisão é uma convenção da equipe; esta documentação não configura proteção automática da branch.
 
@@ -83,19 +83,8 @@ O benchmark deverá variar tamanho, gerações máximas, percentual inicial e qu
 
 Em CPython com GIL habilitado, threads não executam simultaneamente o bytecode Python de tarefas intensivas em CPU. A versão com `threading` continua sendo a escolha da equipe, mas aceleração não é garantida. Esse limite e o custo dos sockets devem entrar na análise, mesmo quando houver perda de desempenho. Veja as [referências técnicas](docs/REFERENCIAS.md).
 
-## Melhorias e entrega
+## Melhorias
 
 As melhorias ficam em `melhorias.py`, opcionais e desativadas por padrão. Cada uma precisa de justificativa, documentação e testes. Mudanças na dinâmica só podem entrar nas comparações depois de integradas a todas as versões comparadas. Possibilidades: probabilidades de convencimento, influenciadores, bots, resistência e estatísticas adicionais. A pontuação de cada melhoria depende da avaliação do professor.
-
-A entrega final inclui código compactado com instruções e apresentação em PDF, com modelo, divisão do processamento, sincronização, resultados, speedup, eficiência, gargalos, melhorias, limitações, referências e contribuição individual. A apresentação dura 15–20 minutos; todos participam e devem compreender as decisões e demonstrar as versões paralela e distribuída.
-
-## Próximas etapas
-
-- [ ] Confirmar nomes dos integrantes e versão comum do Python.
-- [ ] Combinar a interface complementar para estatísticas e a política de medição.
-- [ ] Desenvolver cada módulo em sua branch.
-- [ ] Validar equivalência com o original e integrar por Pull Requests.
-- [ ] Executar benchmarks reais e integrar melhorias selecionadas.
-- [ ] Preparar referências, slides e demonstração.
 
 O uso de fontes externas e IA deve ser registrado. Consulte [referências e registro de apoio](docs/REFERENCIAS.md).
