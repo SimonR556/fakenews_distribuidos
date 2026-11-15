@@ -21,10 +21,15 @@ colunas geracoes_maximas geracoes_executadas limiar semente trabalhadores
 trabalhadores_efetivos repeticao ignorantes espalhadores inativos""".split()
 OPCIONAIS = {"nucleos_logicos", "nucleos_fisicos", "ram_bytes", "geracoes_executadas"}
 IGNORAR_GRUPO = {"data_utc", "repeticao", "tempo_s", "consistente", "entrada_preservada"}
-# O número de trabalhadores e o papel de coordenador pertencem à versão.
-IGNORAR_COMPARACAO = {"versao", "trabalhadores", "trabalhadores_efetivos", "coordenadores"}
+# Identidade do código e paralelismo pertencem a cada implementação. Continuam
+# no agrupamento estatístico, mas não são critérios de igualdade entre versões.
+IGNORAR_COMPARACAO = {"versao", "codigo", "commit", "trabalhadores",
+                      "trabalhadores_efetivos", "coordenadores"}
 ESTATISTICAS = ["amostras", "media_s", "mediana_s", "minimo_s", "maximo_s",
                 "desvio_padrao_amostral_s"]
+IDENTIDADE_BASELINE = ["versao_sequencial", "codigo_sequencial", "commit_sequencial"]
+CAMPOS_COMPARACAO = IDENTIDADE_BASELINE + ["media_sequencial_s", "amostras_sequencial",
+                                         "speedup", "eficiencia"]
 
 
 def validar(registro):
@@ -43,7 +48,8 @@ def validar(registro):
                   "politica_tempo", "codigo"):
         if not registro[campo]:
             raise ValueError(f"{campo} vazio")
-    if registro["versao"] not in {"sequencial_provisorio", "sequencial", "paralela", "distribuida"}:
+    if registro["versao"] not in {"sequencial_provisorio", "sequencial_candidato",
+                                 "sequencial", "paralela", "distribuida"}:
         raise ValueError("versão desconhecida")
     datetime.fromisoformat(registro["data_utc"])
     for campo in INTEIROS:
@@ -135,11 +141,12 @@ def resumir(registros, campos):
 
 
 def comparar(resumos, campos):
-    """Exige metadados coincidentes, gerações conhecidas e baseline inequívoco."""
+    """Compara cenário/ambiente/política, preservando as duas identidades."""
     comuns = [c for c in campos if c not in IGNORAR_COMPARACAO]
     baselines = defaultdict(list)
     for resumo in resumos:
-        if resumo["versao"] == "sequencial":
+        # Provisório e candidato nunca são promovidos a baseline oficial.
+        if resumo["versao"] == "sequencial" and resumo["trabalhadores_efetivos"] == 1:
             baselines[chave(resumo, comuns)].append(resumo)
     comparacoes = []
     for resumo in resumos:
@@ -149,13 +156,20 @@ def comparar(resumos, campos):
         # Igualdade de campos vazios não comprova igualdade de hardware.
         ambiente = ("cpu", "nucleos_logicos", "nucleos_fisicos", "ram_bytes")
         if (len(candidatos) != 1 or resumo["geracoes_executadas"] is None
-                or any(resumo[c] in (None, "", "desconhecido") for c in ambiente)
-                or "provisorio" in resumo["codigo"].lower()
-                or resumo["commit"] == "desconhecido"):
+                or any(resumo[c] in (None, "", "desconhecido") for c in ambiente)):
             continue
         baseline = candidatos[0]
+        # Sem igualdade de codigo/commit, verificar os dois lados explicitamente.
+        if any(r["commit"] in (None, "", "desconhecido")
+               or any(marca in r["codigo"].lower() for marca in ("provisorio", "candidato"))
+               for r in (baseline, resumo)):
+            continue
         speedup = baseline["media_s"] / resumo["media_s"]
-        comparacoes.append({**resumo, "media_sequencial_s": baseline["media_s"],
+        comparacoes.append({**resumo,
+                            "versao_sequencial": baseline["versao"],
+                            "codigo_sequencial": baseline["codigo"],
+                            "commit_sequencial": baseline["commit"],
+                            "media_sequencial_s": baseline["media_s"],
                             "amostras_sequencial": baseline["amostras"],
                             "speedup": speedup,
                             "eficiencia": speedup / resumo["trabalhadores_efetivos"]})
@@ -185,6 +199,8 @@ def graficos(resumos, comparacoes, campos, saida, preliminar):
     for registros, metrica, rotulo in especificacoes:
         # Varia somente o tamanho; não conecta cenários ou gerações diferentes.
         facetas = [c for c in campos if c not in {"linhas", "colunas", "ignorantes", "espalhadores", "inativos"}]
+        if metrica != "media_s":
+            facetas += IDENTIDADE_BASELINE
         grupos = defaultdict(list)
         for registro in registros:
             grupos[chave(registro, facetas)].append(registro)
@@ -197,9 +213,10 @@ def graficos(resumos, comparacoes, campos, saida, preliminar):
             ax.set_xlabel("Tamanho da matriz (linhas × colunas)")
             ax.set_ylabel(rotulo)
             exemplo = grupo[0]
+            executadas = exemplo['geracoes_executadas']
             ax.set_title(("PRELIMINAR — " if preliminar else "") + exemplo["versao"] +
                          f" | p={exemplo['trabalhadores_efetivos']} | limite={exemplo['geracoes_maximas']}"
-                         f" | executadas={exemplo['geracoes_executadas']}")
+                         f" | executadas={executadas if executadas is not None else 'desconhecidas'}")
             ax.grid(alpha=0.3)
             fig.tight_layout()
             caminho = saida / f"{metrica}_{indice:03d}.png"
@@ -227,15 +244,19 @@ def main(argv=None):
         registros, campos = ler_csvs(caminhos)
         resumos = resumir(registros, campos)
         comparacoes = comparar(resumos, campos)
-        preliminar = all(r["versao"] == "sequencial_provisorio" for r in registros)
+        preliminar = all(r["versao"] in {"sequencial_provisorio", "sequencial_candidato"}
+                         for r in registros)
         saida.mkdir(parents=True, exist_ok=False)
         salvar_csv(saida / "resumo.csv", resumos, campos + ESTATISTICAS)
         print(f"{len(registros)} medições; {len(resumos)} grupos descritivos.")
         if preliminar:
-            print("RESULTADOS PRELIMINARES: somente sequencial_provisorio; sem baseline oficial ou medições paralelas/distribuídas.")
+            print("RESULTADOS PRELIMINARES: somente sequencial_provisorio/sequencial_candidato; "
+                  "sem baseline oficial ou medições paralelas/distribuídas.")
+        if any(r["versao"] == "sequencial_candidato" for r in registros):
+            print("sequencial_candidato: integração à main pendente; não pode ser baseline oficial para speedup.")
         if comparacoes:
             salvar_csv(saida / "comparacoes.csv", comparacoes,
-                       campos + ESTATISTICAS + ["media_sequencial_s", "amostras_sequencial", "speedup", "eficiencia"])
+                       campos + ESTATISTICAS + CAMPOS_COMPARACAO)
         else:
             print("Speedup e eficiência não calculados: nenhuma comparação oficial com cenário, ambiente completo e política de tempo compatíveis.")
         graficos(resumos, comparacoes, campos, saida, preliminar)

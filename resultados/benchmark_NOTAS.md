@@ -16,24 +16,112 @@ O nome padrão do CSV inclui data UTC. `--saida resultados/nome.csv` permite esc
 
 Uma única grade é gerada por combinação de tamanho, limite de gerações e percentual, com a semente informada. Cada repetição recebe uma cópia profunda, criada antes do cronômetro. A referência roda fora do cronômetro, com outro laço que chama as funções originais. Não se executa a rotina principal de `FakeNews.py`.
 
-`time.perf_counter()` mede somente a chamada ao adaptador, incluindo as alocações de próximas gerações e as contagens usadas para decidir a parada. Criação e cópia inicial, referência, verificações, CSV e impressões ficam fora. Não há aquecimento separado. A comparação usa igualdade completa das matrizes, contagens, gerações e preservação da entrada, nunca os tempos. A referência compartilha a função original de transição: verifica consistência com o professor, sem constituir validação independente dessa regra.
+`time.perf_counter()` mede somente a chamada ao adaptador, incluindo as alocações de próximas gerações e as contagens usadas para decidir a parada. Criação e cópia inicial pelo benchmark, leitura e SHA-256 do arquivo externo, carregamento do módulo, verificação da assinatura, referência, verificações, CSV e impressões ficam fora. Cópias internas feitas por `simular` e o empacotamento em `ResultadoExecucao` fazem parte do tempo do candidato. Não há aquecimento separado. A comparação usa igualdade completa das matrizes, contagens e preservação da entrada; gerações são comparadas somente quando informadas pelo executor, nunca substituídas pelas da referência. Os tempos não participam da validação. A referência compartilha a função original de transição: verifica consistência com o professor, sem constituir validação independente dessa regra.
 
 `sequencial_provisorio` é um adaptador temporário, não a implementação futura de `sequencial.py`. Os nomes `sequencial`, `paralela` e `distribuida` estão reservados e indisponíveis. Arquivos futuros presentes não serão ativados automaticamente. Será necessário conectar adaptadores ao contrato `simular`, combinar estatísticas e definir custos de inicialização, comunicação e encerramento. `ResultadoExecucao` é exclusivo do benchmark; não estabelece o retorno da proposta `simular_com_estatisticas`. Gerações desconhecidas deverão ficar vazias, nunca inferidas da matriz final.
+
+## Sequencial candidato externo (integração pendente)
+
+O integrante 1 implementou `sequencial.py` na branch remota
+`origin/joao/sequencial-testes`. Conforme o teste anterior informado pelo
+integrante 4, uma cópia em `/tmp/sequencial_colega.py` reproduziu as contagens
+finais do professor no cenário padrão: 9463 ignorantes, zero espalhadores e
+537 inativos. Essa origem é informada pelo integrante: o carregador não consulta
+a branch remota nem verifica a equivalência entre ela e o arquivo externo.
+
+O executor opcional `sequencial_candidato` permite avaliar essa cópia sem
+incorporar ou modificar o arquivo do colega nesta branch. **Ainda não foi
+integrado à main e não pode ser usado como baseline oficial para speedup.**
+Sua inclusão no benchmark permanece sujeita à revisão do integrante 4 e não
+representa integração definitiva.
+
+```bash
+python3 -B benchmark.py --rapido --versoes sequencial_provisorio sequencial_candidato --sequencial-arquivo /tmp/sequencial_colega.py --saida resultados/benchmark_candidato_rapido.csv
+python3 -B analisar_resultados.py resultados/benchmark_candidato_rapido.csv --saida resultados/analise_candidato_rapido
+```
+
+O caminho deve ser explícito e apontar para um arquivo Python existente;
+`--sequencial-arquivo` exige selecionar `sequencial_candidato` em `--versoes`.
+O padrão continua sendo apenas `sequencial_provisorio`. Não há busca automática,
+cópia, merge ou alteração do arquivo externo. O carregamento usa
+`importlib.util.spec_from_file_location` e `module_from_spec`, da biblioteca
+padrão. O arquivo é lido uma única vez em bytes; `hashlib.sha256` identifica esse
+conteúdo e `compile`/`exec` carrega exatamente esses mesmos bytes no módulo,
+sem reler o arquivo nem usar bytecode em cache. Tudo ocorre antes das medições.
+Assim, uma alteração posterior do arquivo no disco não troca o conteúdo já
+carregado nem o hash registrado para ele. O bloco
+`if __name__ == "__main__"` do colega não é executado. Como em uma importação
+Python, o restante do código de nível superior do arquivo é executado.
+
+Verificam-se a existência de `simular`, se ela é chamável e se sua assinatura
+aceita os quatro argumentos posicionais do contrato. Cada repetição chama
+`simular(grade_inicial, geracoes, limiar, trabalhadores)` e adapta somente a
+matriz retornada para `ResultadoExecucao(grade, geracoes_executadas=None)`.
+A matriz final, as contagens e a preservação da entrada continuam verificadas
+contra a referência. A função não informa o número de atualizações: mesmo com
+zero gerações solicitadas, o candidato registra `None` em memória e campo vazio
+no CSV. Nenhum valor é inferido da matriz, do limite ou da referência.
+
+O esquema de colunas do CSV foi preservado. Para o candidato, `codigo` contém
+`sequencial_candidato_sha256:<64 dígitos hexadecimais>;arquivo_externo:<caminho absoluto>`;
+para o provisório, o identificador anterior permanece. O hash identifica o
+conteúdo do arquivo principal carregado; o caminho mantém sua origem. O hash
+não cobre dependências importadas pelo arquivo. `commit` continua identificando
+apenas o HEAD local, não a revisão do arquivo externo. CSVs antigos com apenas
+o caminho continuam legíveis, sem acrescentar retroativamente hashes que não
+foram coletados. Identificadores antigos e novos formam grupos separados.
+
+### Validação do adaptador candidato
+
+O teste pequeno com `/tmp/sequencial_colega.py` executou os dois adaptadores
+em 5×5 e 10×10, limite cinco, percentual 0,05, limiar três, semente 42 e duas
+repetições por versão/tamanho. As oito medições passaram na comparação da matriz,
+contagens e preservação da entrada. O provisório informou uma geração em ambos
+os tamanhos; o candidato manteve gerações desconhecidas.
+
+| Matriz | Contagens finais (ignorantes/espalhadores/inativos), iguais nas duas versões | Tempos do candidato (s), repetições 1 e 2 |
+| --- | --- | --- |
+| 5×5 | 24/0/1 | 0.000032358; 0.000029793 |
+| 10×10 | 95/0/5 | 0.000091361; 0.000091845 |
+
+São medições curtas de verificação, sem conclusão de desempenho ou speedup.
+Um controle adicional em 100×100, limite 50 e quatro trabalhadores solicitados
+reproduziu 9463/0/537 com o candidato, mantendo gerações desconhecidas.
+Também passaram os casos de zero gerações, ausência inicial de espalhadores,
+limiar zero, matriz 1×1 e mais trabalhadores do que linhas.
+
+O analisador leu os oito registros novos (quatro grupos) e os 19 registros dos
+dois CSVs antigos (cinco grupos), inclusive uma leitura conjunta de 27 registros.
+O resumo novo preservou os campos de gerações vazios do candidato e não produziu
+comparações oficiais. O fluxo completo de análise gerou o CSV e informou que
+`matplotlib` está ausente, sem instalar dependências.
+
+Foram verificadas as rejeições de caminho ausente/diretório, falta de caminho
+explícito, `simular` ausente ou não chamável, assinatura incompatível e módulo
+com sintaxe inválida. Executores que alteram a entrada ou retornam matriz
+incorreta continuam recusados. Dados sintéticos somente em memória confirmaram
+que o candidato nunca vira baseline, mesmo com gerações e hardware preenchidos,
+e que gerações desconhecidas impedem comparações entre versões oficiais.
+
+As saídas de validação ficaram em uma pasta temporária sob `/tmp`, redirecionando
+somente as raízes de saída na sessão de teste; a CLI entregue continua exigindo
+`resultados/`. Nenhum CSV ou módulo foi adicionado ao repositório. O conteúdo do
+arquivo externo foi conferido antes/depois e permaneceu igual.
 
 ## Campos do CSV
 
 | Campos | Significado |
 | --- | --- |
-| `versao` | Executor medido, atualmente apenas `sequencial_provisorio` |
+| `versao` | Executor medido: `sequencial_provisorio` ou, explicitamente, `sequencial_candidato` |
 | `linhas`, `colunas` | Tamanho da matriz |
-| `geracoes_maximas`, `geracoes_executadas` | Limite solicitado e atualizações efetivamente realizadas |
+| `geracoes_maximas`, `geracoes_executadas` | Limite solicitado e atualizações informadas pelo executor; executadas ficam vazias no candidato |
 | `percentual_solicitado` | Fração inicial solicitada; sorteios com reposição podem produzir menos espalhadores distintos |
 | `limiar`, `semente` | Configuração da regra e geração da entrada |
 | `trabalhadores`, `trabalhadores_efetivos` | Quantidade solicitada e efetiva; o adaptador sempre usa um |
 | `repeticao`, `tempo_s` | Índice a partir de um e duração em segundos |
 | `ignorantes`, `espalhadores`, `inativos` | Contagens finais |
 | `consistente`, `entrada_preservada` | Verificações aprovadas; falhas interrompem a execução sem exportar resultados |
-| `data_utc`, `commit`, `codigo` | Data da coleta, HEAD e identificação de código provisório na árvore de trabalho |
+| `data_utc`, `commit`, `codigo` | Data da coleta, HEAD local e identificação do adaptador provisório ou SHA-256 e caminho externo candidato |
 | `python`, `implementacao_python`, `sistema`, `cpu` | Ambiente detectado pela biblioteca padrão |
 | `nucleos_logicos`, `nucleos_fisicos`, `ram_bytes` | Núcleos lógicos detectados; físicos e RAM ficam vazios por falta de detecção portável |
 | `hosts`, `coordenadores` | Um host local e nenhum coordenador nesta etapa |
@@ -99,26 +187,49 @@ o hardware foi o mesmo entre coletas.
 Para speedup, o baseline deve ser exatamente `sequencial` com um trabalhador
 efetivo, e o outro grupo deve ser `paralela` ou `distribuida`. Usam-se as médias:
 `S(p) = media_sequencial_s / media_s` e `E(p) = S(p) / trabalhadores_efetivos`.
-A eficiência é uma razão (multiplicar por 100 para percentual). Trabalhadores
-solicitados/efetivos e coordenadores não fazem parte da chave de comparação
-entre versões; todos os demais identificadores devem coincidir, inclusive
-hosts, contagens, gerações executadas, commit, código e política de tempo.
-Gerações desconhecidas impedem a comparação. Baseline ambíguo também é recusado.
+A eficiência é uma razão (multiplicar por 100 para percentual).
 
-Por cautela, comparações exigem CPU, núcleos físicos/lógicos e RAM preenchidos,
-commit conhecido e identificação de código sem `provisorio`. O identificador
-`codigo` deve representar a mesma revisão/conjunto experimental para as versões
-comparadas. Esta regra pode recusar experimentos equivalentes com metadados
-diferentes; é preferível registrar corretamente o ambiente e a política no
-benchmark antes de medir, sem editar os dados brutos. Igualdade textual desses
-campos ainda depende de um registro fiel do experimento, inclusive configuração
-de cada host/rede em execuções distribuídas (colunas adicionais). O script não
-consegue verificar hardware, estado da árvore de trabalho, política ou correção
-da simulação apenas pelos tempos.
+O agrupamento estatístico continua incluindo `versao`, `codigo` e `commit`:
+revisões diferentes não têm seus tempos misturados em uma média. Já a chave de
+comparação exclui esses três identificadores individuais, além de trabalhadores
+solicitados/efetivos e coordenadores. Os demais campos continuam exigidos iguais:
+dimensões da matriz, limites e gerações executadas, percentual, limiar, semente,
+contagens finais, Python/implementação, sistema, CPU, núcleos, RAM, hosts e política
+de tempo. Colunas adicionais também participam da compatibilidade, por cautela.
+O CSV não contém as matrizes; a análise depende da geração de entradas conforme
+o contrato e da validação completa registrada pelo benchmark.
+
+Havia um problema real: a chave anterior retirava `versao`, mas conservava
+`codigo` e `commit`. Assim, implementações oficiais com identificadores próprios
+não podiam ser comparadas mesmo no mesmo cenário e ambiente. Esses identificadores
+agora servem à rastreabilidade, sem exigir que os códigos das versões sejam iguais.
+`comparacoes.csv` preserva `versao`, `codigo` e `commit` da versão comparada e
+acrescenta `versao_sequencial`, `codigo_sequencial` e `commit_sequencial` do baseline.
+Os gráficos de comparação também mantêm separadas as identidades dos baselines.
+
+Gerações desconhecidas impedem a comparação, mesmo quando desconhecidas dos dois
+lados. Se houver mais de um grupo sequencial compatível, inclusive revisões de
+código diferentes, o baseline é ambíguo e a comparação é recusada: não se escolhe
+o mais rápido nem se agregam revisões. Nesse caso, analisar separadamente os
+arquivos do experimento que identificam o baseline pretendido.
+O analisador aceita os CSVs anteriores e `sequencial_candidato` no mesmo esquema;
+campos de gerações vazios continuam como `None` internamente e vazios em
+`resumo.csv`, sem preenchimento ou estimativa. Gráficos mostram `desconhecidas`.
+
+Por cautela, comparações exigem CPU, núcleos físicos/lógicos e RAM preenchidos.
+Ambos os lados precisam de commit conhecido e código sem as marcas `provisorio`
+ou `candidato`; seus commits podem ser diferentes. Isso não substitui a restrição
+ao nome exato `sequencial` para o baseline. É necessário registrar corretamente
+o ambiente e a política no benchmark antes de medir, sem editar os dados brutos.
+Igualdade textual desses campos depende de um registro fiel do experimento,
+inclusive configuração de cada host/rede em execuções distribuídas (colunas
+adicionais). O script não consegue verificar hardware, estado da árvore de
+trabalho, política ou correção da simulação apenas pelos tempos.
 
 Quando houver comparações válidas, serão gerados `comparacoes.csv` e os PNGs
 `speedup_NNN.png` e `eficiencia_NNN.png`. Sem comparação válida, esses arquivos
-não são criados. `sequencial_provisorio` nunca participa como baseline oficial.
+não são criados. `sequencial_provisorio` e `sequencial_candidato` nunca participam
+como baseline oficial; somente o nome exato `sequencial` é elegível.
 
 Os gráficos de tempo são `media_s_NNN.png`. `matplotlib` é usado exclusivamente
 para visualização com backend `Agg`, sem paralelizar a simulação. Se a biblioteca
@@ -127,8 +238,8 @@ sendo gerados. Cada gráfico corresponde a um grupo que varia apenas as dimensõ
 e as contagens finais; os demais identificadores, inclusive gerações executadas,
 ficam fixos. O eixo lista as dimensões em ordem crescente de área. A numeração
 segue a primeira ocorrência de cada grupo no resumo. Grupos com um único tamanho
-produzem um ponto. Quando todas as medições são provisórias, os títulos exibem
-`PRELIMINAR`; a coluna `versao` do resumo também identifica essa condição.
+produzem um ponto. Quando todas as medições são provisórias ou candidatas, os
+títulos exibem `PRELIMINAR`; a coluna `versao` do resumo identifica cada executor.
 
 ### Análise dos arquivos iniciais
 
@@ -162,3 +273,43 @@ esquemas incompletos, arquivos vazios e proteção da saída. Fórmulas e rejei�
 comparações incompatíveis foram verificadas com dados sintéticos somente em
 memória, sem incluí-los nos resultados experimentais. Implementação da análise
 com apoio de IA (Codex).
+
+### Validação da chave de comparação e do SHA-256
+
+A revisão foi testada com dados identificados como `TESTE_SINTETICO`, separados
+dos resultados reais. Para ambos os nomes oficiais `paralela` e `distribuida`,
+um baseline `sequencial` com código e commit próprios foi aceito quando todos os
+metadados de compatibilidade coincidiam. As fórmulas foram verificadas somente
+como teste: tempos artificiais de quatro e dois segundos resultam em speedup
+dois e eficiência 0,5 para quatro trabalhadores. Esses valores não representam
+desempenho medido do projeto.
+
+Foram recusadas individualmente 16 diferenças em cenário, contagens, Python,
+sistema, CPU, núcleos, RAM, hosts e política de tempo. Também foram verificadas
+as recusas de gerações desconhecidas em um ou nos dois lados, hardware incompleto,
+provisório/candidato como baseline, código temporário ou commit desconhecido em
+qualquer lado, baseline sem um trabalhador efetivo e múltiplas revisões sequenciais
+compatíveis. Colunas adicionais de ambiente incompatíveis continuam bloqueando
+comparações. Revisões diferentes continuaram separadas no resumo; a exportação
+da comparação preservou as identidades dos dois lados.
+
+Fixtures Python em `/tmp` verificaram que conteúdos diferentes no mesmo caminho
+produzem hashes diferentes, que o mesmo conteúdo em outro caminho mantém o hash
+e que um executor já carregado continua usando seus bytes originais após mudar
+a fixture no disco. Nenhum arquivo do colega foi usado como fixture nem alterado.
+
+Os dois CSVs reais antigos continuaram produzindo 19 registros em cinco grupos.
+O teste real pequeno com `/tmp/sequencial_colega.py` produziu oito medições dos
+dois adaptadores, com as mesmas contagens 24/0/1 (5×5) e 95/0/5 (10×10), entradas
+preservadas e gerações do candidato vazias. O SHA-256 registrado coincidiu com
+o cálculo independente do conteúdo. O teste impediu novas leituras e chamadas
+a `hashlib.sha256` durante `executar_benchmark`, confirmando que esses trabalhos
+ocorrem no carregamento anterior à medição. A leitura conjunta dos CSVs antigos
+e do novo produziu 27 registros. O CSV candidato anterior, sem hash, também foi
+lido junto ao novo. Nenhum hash foi fabricado para registros antigos.
+
+Os artefatos ficaram apenas em `/tmp`, com a exportação sintética identificada
+em uma subpasta `TESTES_SINTETICOS`; nenhum resultado fictício foi acrescentado
+ao repositório. A análise real preservou gerações desconhecidas e não gerou
+speedup ou eficiência. `matplotlib` continuou ausente, sem instalação de
+dependências e sem validação de renderização dos PNGs nesta revisão.

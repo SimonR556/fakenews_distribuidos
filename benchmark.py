@@ -1,32 +1,39 @@
-"""Primeiro benchmark: adaptador sequencial PROVISÓRIO do original.
+"""Benchmark preliminar: sequencial provisório e candidato externo opcional.
 
 Execução rápida (biblioteca padrão, sem dependências):
     python3 -B benchmark.py --rapido
     python3 -B benchmark.py --tamanhos 5x5 10x10 100x100 --geracoes 50 \
         --percentuais 0.05 --limiar 3 --semente 42 --repeticoes 3
     python3 -B benchmark.py --help
+    python3 -B benchmark.py --rapido --versoes sequencial_candidato \
+        --sequencial-arquivo /tmp/sequencial_colega.py
 
 Cada combinação de tamanho, limite e percentual é um cenário. Sua grade é
 gerada uma única vez; referência e repetições recebem cópias independentes.
 O tempo inclui somente a chamada do executor: evolução, alocações internas,
-contagem para parada e retorno. Exclui criação/cópia da entrada, referência,
-validação, coleta do ambiente, impressão e CSV. Não há aquecimento separado.
+contagem para parada e retorno. Exclui criação/cópia da entrada pelo benchmark,
+carregamento do módulo e cálculo do SHA-256, referência, validação, coleta do
+ambiente, impressão e CSV. Não há aquecimento separado.
 
-O adaptador não substitui sequencial.py. O registro VERSOES reserva pontos de
-integração: um futuro adaptador pode chamar simular(grade, geracoes, limiar,
-trabalhadores) e embrulhar a matriz em ResultadoExecucao com gerações=None.
+Os adaptadores não substituem sequencial.py. O candidato carrega somente o
+arquivo explicitamente informado e chama simular com os quatro parâmetros do
+contrato, embrulhando a matriz em ResultadoExecucao com gerações=None.
 Esse tipo é interno ao benchmark; NÃO define simular_com_estatisticas, cuja
 interface continua pendente. Nunca inferir gerações a partir da matriz final.
 Antes de ativar versões futuras, validar contrato, estatísticas e política de
 inicialização/encerramento de threads, processos e conexões com os colegas.
 
-Os CSVs são dados preliminares do adaptador, não resultados das versões do
-grupo. Não são calculados speedup nem eficiência nesta etapa. Implementação
-com apoio de IA (Codex), a partir dos documentos locais e de FakeNews.py.
+Os CSVs são dados preliminares; sequencial_candidato ainda não foi integrado
+à main e não é baseline oficial para speedup. Não são calculados speedup nem
+eficiência nesta etapa. Implementação com apoio de IA (Codex), a partir dos
+documentos locais e de FakeNews.py.
 """
 
 import argparse
 import csv
+import hashlib
+import importlib.util
+import inspect
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -73,6 +80,47 @@ def executar_sequencial_provisorio(grade, geracoes, limiar, trabalhadores):
 
 
 @dataclass(frozen=True)
+class ExecutorSequencialCandidato:
+    """Adaptador chamável com o hash do conteúdo carregado fora do cronômetro."""
+
+    simular: Callable
+    sha256: str
+
+    def __call__(self, grade_inicial, geracoes, limiar, trabalhadores):
+        grade = self.simular(grade_inicial, geracoes, limiar, trabalhadores)
+        return ResultadoExecucao(grade, geracoes_executadas=None)
+
+
+def carregar_sequencial_candidato(caminho):
+    """Calcula SHA-256 e carrega os mesmos bytes, sem reler fonte ou bytecode."""
+    caminho = Path(caminho).resolve()
+    if not caminho.is_file():
+        raise ValueError(f"Arquivo sequencial candidato não encontrado: {caminho}")
+    spec = importlib.util.spec_from_file_location("_sequencial_candidato", caminho)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"Não foi possível carregar o módulo Python: {caminho}")
+    modulo = importlib.util.module_from_spec(spec)
+    try:
+        conteudo = caminho.read_bytes()
+        sha256 = hashlib.sha256(conteudo).hexdigest()
+        exec(compile(conteudo, str(caminho), "exec"), modulo.__dict__)
+    except Exception as erro:
+        raise ValueError(f"Erro ao carregar {caminho}: {erro}") from erro
+    simular = getattr(modulo, "simular", None)
+    if not callable(simular):
+        raise ValueError(f"{caminho}: função simular ausente ou não chamável.")
+    try:
+        inspect.signature(simular).bind([], 0, 3, 1)
+    except (TypeError, ValueError) as erro:
+        raise ValueError(
+            f"{caminho}: simular deve aceitar os quatro parâmetros posicionais "
+            "(grade_inicial, geracoes, limiar, trabalhadores)."
+        ) from erro
+
+    return ExecutorSequencialCandidato(simular, sha256)
+
+
+@dataclass(frozen=True)
 class Versao:
     """Ponto de extensão para executores com o contrato interno acima."""
 
@@ -82,6 +130,7 @@ class Versao:
 
 VERSOES = {
     "sequencial_provisorio": Versao(executar_sequencial_provisorio, "FakeNews.py"),
+    "sequencial_candidato": Versao(None, "arquivo externo via --sequencial-arquivo"),
     "sequencial": Versao(None, "sequencial.py"),
     "paralela": Versao(None, "paralelo.py"),
     "distribuida": Versao(None, "distribuido.py"),
@@ -165,7 +214,7 @@ def executar_benchmark(args):
         grade = criar_grade(linhas, colunas, percentual, args.semente)
         referencia = executar_referencia(grade, geracoes, args.limiar)
         for nome in args.versoes:
-            executor = VERSOES[nome].executor
+            executor = args.executores[nome]
             for repeticao in range(1, args.repeticoes + 1):
                 tempo_s, resultado, contagens = medir_repeticao(
                     executor, grade, geracoes, args.limiar,
@@ -173,6 +222,9 @@ def executar_benchmark(args):
                 )
                 registros.append({
                     **ambiente,
+                    "codigo": (f"sequencial_candidato_sha256:{executor.sha256};"
+                               f"arquivo_externo:{args.sequencial_arquivo}"
+                               if nome == "sequencial_candidato" else ambiente["codigo"]),
                     "versao": nome,
                     "linhas": linhas,
                     "colunas": colunas,
@@ -231,6 +283,9 @@ def ler_argumentos(argv=None):
     parser.add_argument("--repeticoes", type=int)
     parser.add_argument("--versoes", nargs="+", choices=VERSOES,
                         default=["sequencial_provisorio"])
+    parser.add_argument("--sequencial-arquivo", type=Path,
+                        help="Arquivo Python externo para --versoes sequencial_candidato; "
+                             "ainda não é baseline oficial para speedup.")
     parser.add_argument("--saida", type=Path,
                         help="CSV novo dentro de resultados/; padrão com data UTC.")
     args = parser.parse_args(argv)
@@ -248,8 +303,17 @@ def ler_argumentos(argv=None):
         parser.error("Este benchmark aceita limiar entre 0 e 8.")
     if args.repeticoes < 1 or args.trabalhadores < 1:
         parser.error("Repetições e trabalhadores devem ser positivos.")
+    candidato = "sequencial_candidato" in args.versoes
+    if candidato and args.sequencial_arquivo is None:
+        parser.error("sequencial_candidato exige --sequencial-arquivo CAMINHO.")
+    if args.sequencial_arquivo is not None:
+        if not candidato:
+            parser.error("--sequencial-arquivo exige --versoes sequencial_candidato.")
+        args.sequencial_arquivo = args.sequencial_arquivo.resolve()
+        if not args.sequencial_arquivo.is_file():
+            parser.error(f"Arquivo sequencial candidato não encontrado: {args.sequencial_arquivo}")
     for nome in args.versoes:
-        if VERSOES[nome].executor is None:
+        if nome != "sequencial_candidato" and VERSOES[nome].executor is None:
             parser.error(f"Versão {nome} pendente: ainda não integrada ao benchmark.")
     if args.saida is None:
         data = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -259,13 +323,28 @@ def ler_argumentos(argv=None):
         parser.error("O CSV deve ficar dentro de resultados/.")
     if args.saida.exists():
         parser.error("O arquivo de saída já existe; escolha outro nome.")
+    args.executores = {nome: VERSOES[nome].executor for nome in args.versoes}
+    if candidato:
+        try:
+            args.executores["sequencial_candidato"] = carregar_sequencial_candidato(
+                args.sequencial_arquivo,
+            )
+        except ValueError as erro:
+            parser.error(str(erro))
     return args
 
 
 def main(argv=None):
     """Executa a CLI e imprime resumo somente fora da região medida."""
     args = ler_argumentos(argv)
+    if "sequencial_candidato" in args.versoes:
+        print(f"sequencial_candidato: {args.sequencial_arquivo}; integração à main pendente; "
+              "não pode ser baseline oficial para speedup.")
+        print(f"SHA-256 do candidato: {args.executores['sequencial_candidato'].sha256}")
+        print("Gerações executadas do candidato: desconhecidas (campo vazio no CSV).")
     for nome, versao in VERSOES.items():
+        if nome == "sequencial_candidato":
+            continue
         if versao.executor is None:
             situacao = ("arquivo ausente" if not (RAIZ / versao.modulo).is_file()
                         else "arquivo presente; integração pendente")
@@ -273,11 +352,13 @@ def main(argv=None):
     registros = executar_benchmark(args)
     exportar_csv(args.saida, registros)
     print(f"CSV: {args.saida}")
-    print(f"{len(registros)} medições; matrizes, contagens, gerações e entradas verificadas.")
+    print(f"{len(registros)} medições; matrizes, contagens e entradas verificadas; "
+          "gerações verificadas somente quando informadas pelo executor.")
     for registro in registros:
+        geracoes = registro['geracoes_executadas']
         print(f"{registro['versao']} {registro['linhas']}x{registro['colunas']} "
               f"repetição={registro['repeticao']} "
-              f"gerações={registro['geracoes_executadas']} "
+              f"gerações={geracoes if geracoes is not None else 'desconhecidas'} "
               f"tempo_s={registro['tempo_s']:.9f}")
 
 
