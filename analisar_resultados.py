@@ -57,7 +57,7 @@ def validar(registro):
         if valor is not None and campo != "semente" and valor < 0:
             raise ValueError(f"{campo} negativo")
     for campo in ("linhas", "colunas", "hosts", "trabalhadores",
-                  "trabalhadores_efetivos", "repeticao", "nucleos_logicos",
+                  "repeticao", "nucleos_logicos",
                   "nucleos_fisicos", "ram_bytes"):
         if registro[campo] is not None and registro[campo] < 1:
             raise ValueError(f"{campo} deve ser positivo")
@@ -67,6 +67,11 @@ def validar(registro):
         raise ValueError("percentual ou limiar fora do intervalo aceito pelo benchmark")
     if registro["trabalhadores_efetivos"] > registro["trabalhadores"]:
         raise ValueError("trabalhadores efetivos excedem os solicitados")
+    if (registro["trabalhadores_efetivos"] == 0
+            and not (registro["geracoes_maximas"] == 0
+                     and registro["geracoes_executadas"] == 0
+                     and registro["versao"] in {"paralela", "distribuida"})):
+        raise ValueError("zero trabalhadores efetivos exige versão paralela/distribuída sem gerações")
     if registro["versao"].startswith("sequencial") and registro["trabalhadores_efetivos"] != 1:
         raise ValueError("versão sequencial deve usar um trabalhador efetivo")
     executadas = registro["geracoes_executadas"]
@@ -156,6 +161,7 @@ def comparar(resumos, campos):
         # Igualdade de campos vazios não comprova igualdade de hardware.
         ambiente = ("cpu", "nucleos_logicos", "nucleos_fisicos", "ram_bytes")
         if (len(candidatos) != 1 or resumo["geracoes_executadas"] is None
+                or resumo["trabalhadores_efetivos"] < 1
                 or any(resumo[c] in (None, "", "desconhecido") for c in ambiente)):
             continue
         baseline = candidatos[0]
@@ -184,6 +190,54 @@ def salvar_csv(caminho, registros, campos):
     print(f"Gerado: {caminho}")
 
 
+def graficos_por_trabalhadores(comparacoes, campos, saida, plt):
+    """Plota comparações já validadas, mantendo cenário e baseline fixos."""
+    facetas = [c for c in campos if c not in IGNORAR_COMPARACAO] + IDENTIDADE_BASELINE
+    grupos = defaultdict(list)
+    for registro in comparacoes:
+        grupos[chave(registro, facetas)].append(registro)
+    for indice, grupo in enumerate(grupos.values(), 1):
+        series = defaultdict(list)
+        for registro in grupo:
+            # Endereços variam com p no coordenador local; não são uma revisão
+            # de código. Os hashes e commits completos continuam separando séries.
+            codigo = registro["codigo"].split(";enderecos_workers:", 1)[0]
+            identidade = (registro["versao"], codigo, registro["commit"], registro["coordenadores"])
+            series[identidade].append(registro)
+        for metrica, rotulo in (("speedup", "Speedup S(p)"), ("eficiencia", "Eficiência E(p)")):
+            fig, ax = plt.subplots(figsize=(9, 6))
+            for numero, (identidade, registros) in enumerate(series.items(), 1):
+                versao = identidade[0]
+                nome = "Paralela" if versao == "paralela" else "Distribuída"
+                if sum(identidade_serie[0] == versao for identidade_serie in series) > 1:
+                    nome += f" | série {numero} | commit {identidade[2][:10]}"
+                registros = sorted(registros, key=lambda r: r["trabalhadores_efetivos"])
+                valores_p = [r["trabalhadores_efetivos"] for r in registros]
+                # Configurações distintas com o mesmo p não são agregadas nem
+                # conectadas por uma linha como se fossem uma única sequência.
+                estilo = "-" if len(set(valores_p)) == len(valores_p) else "None"
+                ax.plot(valores_p, [r[metrica] for r in registros], marker="o",
+                        linestyle=estilo, label=nome)
+            ax.set_xticks(sorted({r["trabalhadores_efetivos"] for r in grupo}))
+            ax.set_xlabel("Trabalhadores efetivos (p)")
+            ax.set_ylabel(rotulo)
+            exemplo = grupo[0]
+            ax.set_title(f"{exemplo['linhas']}×{exemplo['colunas']} | "
+                         f"limite={exemplo['geracoes_maximas']} | "
+                         f"executadas={exemplo['geracoes_executadas']}\n"
+                         f"fração={exemplo['percentual_solicitado']} | "
+                         f"limiar={exemplo['limiar']} | semente={exemplo['semente']}\n"
+                         f"{exemplo['politica_tempo']}")
+            ax.legend()
+            ax.grid(alpha=0.3)
+            fig.tight_layout()
+            caminho = saida / f"{metrica}_{indice:03d}.png"
+            with caminho.open("xb") as arquivo:
+                fig.savefig(arquivo, format="png")
+            plt.close(fig)
+            print(f"Gerado: {caminho}")
+
+
 def graficos(resumos, comparacoes, campos, saida, preliminar):
     try:
         import matplotlib
@@ -193,9 +247,6 @@ def graficos(resumos, comparacoes, campos, saida, preliminar):
         print("matplotlib não está instalado: CSVs gerados; gráficos PNG indisponíveis. Nenhuma instalação solicitada.")
         return
     especificacoes = [(resumos, "media_s", "Tempo médio (s)")]
-    if comparacoes:
-        especificacoes += [(comparacoes, "speedup", "Speedup S(p)"),
-                          (comparacoes, "eficiencia", "Eficiência E(p)")]
     for registros, metrica, rotulo in especificacoes:
         # Varia somente o tamanho; não conecta cenários ou gerações diferentes.
         facetas = [c for c in campos if c not in {"linhas", "colunas", "ignorantes", "espalhadores", "inativos"}]
@@ -225,6 +276,8 @@ def graficos(resumos, comparacoes, campos, saida, preliminar):
                 fig.savefig(arquivo, format="png")
             plt.close(fig)
             print(f"Gerado: {caminho}")
+    if comparacoes:
+        graficos_por_trabalhadores(comparacoes, campos, saida, plt)
 
 
 def main(argv=None):
@@ -257,6 +310,7 @@ def main(argv=None):
         if comparacoes:
             salvar_csv(saida / "comparacoes.csv", comparacoes,
                        campos + ESTATISTICAS + CAMPOS_COMPARACAO)
+            print(f"{len(comparacoes)} comparações oficiais de speedup e eficiência.")
         else:
             print("Speedup e eficiência não calculados: nenhuma comparação oficial com cenário, ambiente completo e política de tempo compatíveis.")
         graficos(resumos, comparacoes, campos, saida, preliminar)
