@@ -1,90 +1,438 @@
+
 # Propagação de Fake News em Sistemas Paralelos e Distribuídos
 
-Trabalho acadêmico da UTFPR — Campus Cornélio Procópio. O projeto transforma uma simulação sequencial em versões paralela e distribuída e compara correção, desempenho e custos de sincronização e comunicação.
+Trabalho acadêmico desenvolvido na Universidade Tecnológica Federal do Paraná (UTFPR), Campus Cornélio Procópio, para a disciplina de Sistemas Distribuídos.
 
-> **Estado atual:** organização inicial e código original do professor disponíveis. As implementações do grupo, os benchmarks e as melhorias ainda serão desenvolvidos. Não há resultados comparativos nesta etapa.
+O projeto tem como objetivo estudar a propagação de notícias falsas em uma população simulada, utilizando três abordagens de processamento:
 
-## Modelo da simulação
+- **Sequencial:** execução em um único fluxo de processamento.
+- **Paralela:** utilização de múltiplas threads.
+- **Distribuída:** utilização de processos trabalhadores que se comunicam por sockets TCP.
 
-A população é uma matriz de listas de listas do Python, com os estados:
+Além das implementações principais, o projeto inclui testes automatizados, ferramentas de benchmark e melhorias opcionais no modelo de propagação.
 
-| Valor | Estado | Transição na próxima geração |
+## 1. Objetivo do projeto
+
+O trabalho parte de uma simulação sequencial fornecida pelo professor e propõe sua adaptação para ambientes paralelos e distribuídos.
+
+Os principais objetivos são:
+
+- Implementar a mesma lógica de propagação em três arquiteturas diferentes.
+- Garantir que as implementações produzam resultados equivalentes.
+- Comparar os tempos de execução.
+- Analisar os custos de sincronização e comunicação.
+- Identificar limitações e possíveis ganhos de desempenho.
+- Implementar melhorias opcionais na simulação.
+
+O projeto utiliza Python 3 e recursos da biblioteca padrão.
+
+## 2. Funcionamento da simulação
+
+A população é representada por uma matriz bidimensional.
+
+Cada posição da matriz representa um indivíduo, que pode assumir um dos seguintes estados:
+
+| Valor | Estado | Descrição |
 | --- | --- | --- |
-| `0` | Ignorante | Torna-se espalhador se tiver pelo menos `limiar` vizinhos espalhadores |
-| `1` | Espalhador | Torna-se inativo |
-| `2` | Inativo | Permanece inativo |
+| 0 | Ignorante | Ainda não está propagando a notícia falsa |
+| 1 | Espalhador | Acredita na notícia e está compartilhando |
+| 2 | Inativo | Deixou de compartilhar a notícia |
 
-A vizinhança de Moore considera até oito vizinhos, sem incluir a própria célula e sem conectar bordas opostas. Todas as células leem a geração anterior e escrevem na próxima. O cálculo termina ao atingir o limite de gerações ou quando não restam espalhadores, com a verificação de parada após cada geração, como no original.
+### Regras de propagação
 
-## Começar pelo código original
+A simulação utiliza a vizinhança de Moore, considerando até oito vizinhos ao redor de cada indivíduo.
 
-Pré-requisitos: Git e Python 3. O código original usa apenas a biblioteca padrão (`random`, `time` e `copy`). Execução inicial verificada com Python 3.14.6; a versão comum da equipe ainda deve ser combinada.
+A cada geração:
+
+1. Um indivíduo ignorante se torna espalhador quando possui uma quantidade de vizinhos espalhadores maior ou igual ao limiar configurado.
+2. Um indivíduo espalhador se torna inativo.
+3. Um indivíduo inativo permanece inativo.
+
+As atualizações são síncronas: todas as células consultam o estado da geração anterior antes de produzir a próxima matriz.
+
+A simulação termina quando:
+
+- O número máximo de gerações é atingido; ou
+- Não existem mais indivíduos espalhadores após uma geração.
+
+## 3. Tecnologias utilizadas
+
+- Python 3
+- `threading` e mecanismos de sincronização
+- `concurrent.futures`
+- `socket`
+- `json`
+- `time`
+- `random`
+- `copy`
+- `unittest`
+- Biblioteca padrão do Python
+
+Não é necessário instalar frameworks externos para executar as implementações principais.
+
+## 4. Estrutura do projeto
+
+Os principais arquivos são:
+
+| Arquivo ou diretório | Finalidade |
+| --- | --- |
+| `FakeNews.py` | Código sequencial original fornecido pelo professor |
+| `main.py` | Menu principal e integração das funcionalidades |
+| `sequencial.py` | Implementação sequencial refatorada |
+| `paralelo.py` | Implementação paralela com threads |
+| `distribuido.py` | Coordenador da implementação distribuída |
+| `worker.py` | Processo trabalhador da versão distribuída |
+| `benchmark.py` | Medição e validação das implementações |
+| `analisar_resultados.py` | Análise dos resultados do benchmark |
+| `melhorias.py` | Funcionalidades opcionais da simulação |
+| `testes.py` | Testes da implementação sequencial |
+| `testes_melhorias.py` | Testes das melhorias opcionais |
+| `resultados/` | Arquivos de benchmark e relatórios |
+| `docs/` | Documentação técnica do projeto |
+| `CONTRIBUTING.md` | Orientações de contribuição |
+
+O arquivo `FakeNews.py` foi preservado como referência para o desenvolvimento das demais versões.
+
+## 5. Como executar o projeto
+
+### Pré-requisitos
+
+É necessário ter instalado:
+
+- Python 3
+- Git
+
+Para verificar a instalação:
+
+```bash
+python3 --version
+git --version
+```
+
+### Clonar o repositório
 
 ```bash
 git clone https://github.com/SimonR556/fakenews_distribuidos.git
 cd fakenews_distribuidos
-python --version
-python FakeNews.py
 ```
 
-No Windows, `py` pode substituir `python`, se esse for o comando disponível. Em alguns ambientes Linux, use `python3`. Não há dependências externas para executar o original.
+### Iniciar o programa
 
-`FakeNews.py` é uma cópia preservada do material do professor. As alterações devem ser feitas nos módulos do grupo. O tempo impresso pelo original inclui saída no terminal e não deve ser usado diretamente como baseline do benchmark sem padronizar a medição.
+Execute:
 
-## Organização e responsabilidades
-
-Os arquivos marcados como planejados ainda não foram criados. Cada integrante pode começar a partir do original, sem esperar os demais.
-
-| Arquivo ou pasta | Responsável | Finalidade / situação |
-| --- | --- | --- |
-| `FakeNews.py` | Referência do professor | Código sequencial original preservado |
-| `sequencial.py`, `testes.py` | Integrante 1 | Refatoração, configuração e validação — planejados |
-| `paralelo.py` | Integrante 2 | Divisão de linhas com `threading` — planejado |
-| `distribuido.py`, `worker.py` | Integrante 3 | Coordenador e trabalhadores com `socket` — planejados |
-| `benchmark.py`, `resultados/` | Integrante 4 | Medições, tabelas e gráficos — implementação planejada |
-| `melhorias.py` | Integrante 5 | Extensões opcionais — planejado |
-| `docs/` | Equipe | Contrato, testes, referências e decisões técnicas |
-| `CONTRIBUTING.md` | Equipe | Branches, commits e Pull Requests |
-| `.github/pull_request_template.md` | Equipe | Checklist de revisão |
-
-Não alterar arquivos de outro responsável sem combinar previamente. Documentar bibliotecas adicionais e sua finalidade. Não usar NumPy vetorizado, Pandas, Numba, Cython, GPU/CUDA ou frameworks para paralelizar automaticamente o cálculo das gerações.
-
-## Contrato comum
-
-Cada implementação principal deverá oferecer:
-
-```python
-def simular(grade_inicial, geracoes, limiar, trabalhadores):
-    # Retorna somente a matriz final, sem modificar grade_inicial.
-    ...
+```bash
+python3 main.py
 ```
 
-Este trecho documenta a interface; não é uma implementação. A versão sequencial ignora `trabalhadores`. A versão paralela usa threads e a distribuída usa processos separados que trocam mensagens por sockets. Todas devem produzir a mesma matriz final para entradas idênticas.
+O programa apresentará o seguinte menu:
 
-Consulte [o contrato e as decisões de integração](docs/CONTRATO.md), incluindo a pendência sobre como registrar gerações executadas sem alterar o retorno de `simular`.
+```text
+========================================
+       PROPAGACAO DE FAKE NEWS
+========================================
+1 - Executar simulacao sequencial
+2 - Executar simulacao paralela
+3 - Executar simulacao distribuida
+4 - Executar benchmark rapido
+5 - Demonstrar melhorias
+0 - Sair
+```
 
-## Desenvolvimento em equipe
+## 6. Execução sequencial
 
-Usar branches no padrão `nome/arquivo-arquivo`, em minúsculas, sem acentos, espaços ou extensão `.py`. Exemplo da parte distribuída: `nome/distribuido-worker`. Para documentação: `nome/readme-organizacao`.
+Selecione a opção `1` no menu.
 
-Ao concluir uma entrega, abrir um Pull Request para `main`, descrever as mudanças e os testes e solicitar revisão a outro integrante. O [guia de contribuição](CONTRIBUTING.md) apresenta os comandos. Revisão é uma convenção da equipe; esta documentação não configura proteção automática da branch.
+O programa solicitará:
 
-## Validação e desempenho
+- Quantidade de linhas.
+- Quantidade de colunas.
+- Número máximo de gerações.
+- Percentual inicial de espalhadores.
+- Limiar de convencimento.
 
-O [teste padrão](docs/TESTE_PADRAO.md) usa uma única grade 100 × 100, até 50 gerações, percentual inicial 0,05, limiar 3, semente 42 e quatro trabalhadores. Comparar as matrizes célula por célula, as contagens e o número de gerações. Também testar grades 5 × 5, 10 × 10 e regiões de fronteira.
+Exemplo de configuração:
 
-O benchmark deverá variar tamanho, gerações máximas, percentual inicial e quantidade de trabalhadores; repetir medições e registrar o número de gerações realmente executadas. Criar a grade antes do cronômetro e não imprimir dentro da região medida.
+```text
+Quantidade de linhas: 5
+Quantidade de colunas: 5
+Numero maximo de geracoes: 10
+Percentual inicial de espalhadores: 20
+Limiar: 2
+```
 
-- **Speedup:** `S(p) = T_sequencial / T_p`.
-- **Eficiência:** `E(p) = S(p) / p`; multiplicar por 100 para percentual.
-- `p` representa os trabalhadores de cálculo. Registrar separadamente o coordenador, a quantidade de hosts e os núcleos disponíveis.
-- Registrar CPU, núcleos físicos/lógicos, RAM, SO, Python, ambiente e, em múltiplos hosts, rede e configuração de cada máquina.
-- Explicitar se o tempo inclui criação de threads/processos, conexão, comunicação e encerramento; não misturar políticas entre resultados.
+A execução apresentará as quantidades e os percentuais de indivíduos em cada estado, além do tempo total da simulação.
 
-Em CPython com GIL habilitado, threads não executam simultaneamente o bytecode Python de tarefas intensivas em CPU. A versão com `threading` continua sendo a escolha da equipe, mas aceleração não é garantida. Esse limite e o custo dos sockets devem entrar na análise, mesmo quando houver perda de desempenho. Veja as [referências técnicas](docs/REFERENCIAS.md).
+A versão sequencial também pode ser executada diretamente:
 
-## Melhorias
+```bash
+python3 sequencial.py
+```
 
-As melhorias ficam em `melhorias.py`, opcionais e desativadas por padrão. Cada uma precisa de justificativa, documentação e testes. Mudanças na dinâmica só podem entrar nas comparações depois de integradas a todas as versões comparadas. Possibilidades: probabilidades de convencimento, influenciadores, bots, resistência e estatísticas adicionais. A pontuação de cada melhoria depende da avaliação do professor.
+## 7. Execução paralela
 
-O uso de fontes externas e IA deve ser registrado. Consulte [referências e registro de apoio](docs/REFERENCIAS.md).
+Selecione a opção `2` no menu.
+
+A implementação paralela divide o processamento da matriz entre múltiplas threads, mantendo a sincronização entre as gerações.
+
+Além dos parâmetros da simulação, será solicitada a quantidade de trabalhadores.
+
+Exemplo:
+
+```text
+Quantidade de linhas: 5
+Quantidade de colunas: 5
+Numero maximo de geracoes: 10
+Percentual inicial de espalhadores: 20
+Limiar: 2
+Quantidade de trabalhadores: 2
+```
+
+O número de trabalhadores não pode ultrapassar a quantidade de linhas da matriz.
+
+A utilização de threads permite estudar a divisão de tarefas e os custos de sincronização.
+
+Entretanto, em implementações tradicionais do CPython com GIL habilitado, threads não garantem aceleração em tarefas intensivas em CPU.
+
+## 8. Execução distribuída
+
+Selecione a opção `3` no menu.
+
+A implementação distribuída utiliza um coordenador e processos trabalhadores que se comunicam por sockets TCP.
+
+Antes de executar a simulação, é necessário iniciar os trabalhadores.
+
+### Iniciar dois trabalhadores
+
+Abra um terminal e execute:
+
+```bash
+cd ~/fakenews_distribuidos
+python3 worker.py --porta 5000
+```
+
+Em outro terminal:
+
+```bash
+cd ~/fakenews_distribuidos
+python3 worker.py --porta 5001
+```
+
+Mantenha os dois terminais abertos.
+
+Em um terceiro terminal, execute:
+
+```bash
+python3 main.py
+```
+
+Selecione a opção `3` e informe `2` trabalhadores.
+
+Por padrão, a implementação utiliza o endereço `127.0.0.1`, com portas a partir de `5000`.
+
+A variável de ambiente `FAKENEWS_WORKERS` permite configurar outros endereços de trabalhadores, conforme a implementação.
+
+### Funcionamento
+
+O coordenador distribui partes da matriz para os trabalhadores.
+
+Os trabalhadores calculam suas regiões e devolvem os resultados ao coordenador, que organiza a próxima geração.
+
+A comunicação e a sincronização introduzem custos adicionais que devem ser considerados na análise de desempenho.
+
+A integração e o benchmark foram validados localmente com dois trabalhadores no mesmo computador. Isso não equivale a uma validação em múltiplos computadores físicos.
+
+## 9. Benchmark e comparação de desempenho
+
+O projeto possui um benchmark para medir e verificar as implementações.
+
+No menu principal, selecione a opção `4`.
+
+A configuração rápida integrada utiliza:
+
+| Parâmetro | Configuração |
+| --- | --- |
+| Versões | Sequencial, paralela e distribuída |
+| Matrizes | 5x5 e 10x10 |
+| Repetições | 2 |
+| Trabalhadores | 2 |
+| Gerações máximas | 5 |
+| Semente | 42 |
+
+Os trabalhadores distribuídos devem estar iniciados antes da execução.
+
+O benchmark verifica a equivalência das matrizes finais, das contagens e das entradas utilizadas.
+
+### Executar pelo terminal
+
+Também é possível executar diretamente:
+
+```bash
+python3 -B benchmark.py \
+  --rapido \
+  --versoes sequencial paralela distribuida \
+  --trabalhadores 2
+```
+
+O benchmark gera arquivos CSV na pasta `resultados/`.
+
+A opção integrada ao menu utiliza nomes exclusivos para os arquivos, evitando sobrescrever resultados anteriores.
+
+### Política de medição
+
+O tempo medido considera a chamada completa de cada implementação.
+
+A preparação da matriz inicial, o carregamento dos módulos e a validação dos resultados não fazem parte do tempo cronometrado.
+
+Na versão paralela, o tempo inclui a criação e a finalização das threads.
+
+Na versão distribuída, inclui a comunicação e a sincronização, mas não o tempo necessário para iniciar os processos trabalhadores.
+
+### Speedup e eficiência
+
+O speedup pode ser calculado por:
+
+```text
+Speedup = Tempo sequencial / Tempo paralelo ou distribuido
+```
+
+A eficiência pode ser calculada por:
+
+```text
+Eficiencia = Speedup / Numero de trabalhadores
+```
+
+Essas métricas devem ser interpretadas considerando o ambiente, a quantidade de trabalhadores e a política de medição.
+
+## 10. Resultados da integração
+
+Durante a validação local, as três versões foram executadas com os seguintes parâmetros:
+
+| Parâmetro | Valor |
+| --- | --- |
+| Matriz | 5x5 |
+| Gerações máximas | 10 |
+| Percentual inicial | 20% |
+| Limiar | 2 |
+| Trabalhadores paralelos | 2 |
+| Trabalhadores distribuídos | 2 |
+| Semente | 42 |
+
+As três implementações apresentaram as mesmas contagens finais:
+
+| Estado | Quantidade |
+| --- | --- |
+| Ignorantes | 7 |
+| Espalhadores | 0 |
+| Inativos | 18 |
+
+O benchmark oficial também foi executado com sucesso, realizando 12 medições e verificando as matrizes, as contagens e as entradas dos cenários utilizados.
+
+Nos cenários pequenos testados, a implementação sequencial apresentou os menores tempos de execução.
+
+Esse resultado é compatível com os custos adicionais de sincronização entre threads e comunicação entre processos.
+
+Entretanto, os cenários rápidos executaram apenas uma geração. Portanto, esses resultados não são suficientes para concluir qual implementação apresenta melhor escalabilidade em situações maiores.
+
+## 11. Testes automatizados
+
+O projeto utiliza o módulo `unittest` da biblioteca padrão do Python.
+
+Para executar os testes:
+
+```bash
+python3 -m unittest discover -v
+```
+
+Na validação local realizada durante a integração, foram aprovados 27 testes automatizados.
+
+Os testes existentes abrangem o comportamento sequencial e as melhorias opcionais.
+
+A equivalência entre as implementações também foi verificada pelo benchmark oficial nos cenários executados.
+
+Para uma validação mais abrangente, recomenda-se testar diferentes dimensões, limiares, percentuais, quantidades de trabalhadores e regiões de fronteira.
+
+## 12. Melhorias opcionais
+
+O arquivo `melhorias.py` implementa três funcionalidades adicionais.
+
+Essas melhorias não modificam o comportamento padrão das três implementações oficiais.
+
+### Influenciadores
+
+Alguns indivíduos espalhadores possuem maior capacidade de influenciar seus vizinhos.
+
+Um espalhador comum contribui com peso `1`, enquanto um influenciador pode contribuir com um peso maior, como `3`.
+
+### Resistência à desinformação
+
+Determinados indivíduos precisam receber uma influência maior para se tornarem espalhadores.
+
+Essa funcionalidade permite representar indivíduos mais resistentes à propagação de notícias falsas.
+
+### Estatísticas por geração
+
+A simulação pode registrar a quantidade de ignorantes, espalhadores e inativos em cada geração.
+
+Isso permite acompanhar a evolução da propagação.
+
+### Executar a demonstração
+
+No menu principal, selecione a opção `5`.
+
+Também é possível executar:
+
+```bash
+python3 melhorias.py
+```
+
+As melhorias possuem testes específicos no arquivo `testes_melhorias.py`.
+
+## 13. Organização e desenvolvimento em equipe
+
+O desenvolvimento foi dividido entre integrantes responsáveis pelas implementações, testes, benchmark, documentação e melhorias.
+
+O trabalho utilizou branches individuais e integração por meio do Git e do GitHub.
+
+O fluxo de colaboração inclui:
+
+1. Desenvolvimento em branches separadas.
+2. Commits das alterações.
+3. Execução dos testes.
+4. Abertura de Pull Requests.
+5. Revisão e integração na branch principal.
+
+As orientações completas estão disponíveis em `CONTRIBUTING.md`.
+
+## 14. Limitações do projeto
+
+As principais limitações observadas ou consideradas são:
+
+- O GIL do CPython pode limitar o desempenho da versão com threads em tarefas intensivas em CPU.
+- A comunicação por sockets introduz custos adicionais na implementação distribuída.
+- Matrizes pequenas podem favorecer a execução sequencial.
+- O desempenho depende do hardware e do ambiente de execução.
+- A validação distribuída local não substitui testes em múltiplos computadores.
+- O benchmark rápido não representa necessariamente cargas de trabalho maiores.
+- As melhorias opcionais não fazem parte das comparações oficiais entre as três versões.
+
+## 15. Documentação complementar
+
+O repositório contém documentos adicionais sobre:
+
+- Contrato das implementações.
+- Cenários de testes.
+- Funcionamento da versão distribuída.
+- Referências técnicas.
+- Resultados experimentais e análises.
+
+Consulte os diretórios `docs/` e `resultados/` para mais informações.
+
+## 16. Considerações finais
+
+O projeto demonstra como uma mesma simulação pode ser implementada utilizando processamento sequencial, threads e comunicação distribuída por sockets.
+
+As três abordagens permitem observar diferenças de arquitetura, sincronização, comunicação e desempenho.
+
+A integração das implementações, a validação dos resultados e a realização dos benchmarks oferecem uma base prática para compreender conceitos de Sistemas Paralelos e Distribuídos.
+
+Os resultados também mostram que utilizar mais trabalhadores não significa necessariamente executar mais rapidamente, especialmente quando o custo de coordenação supera o trabalho computacional realizado.

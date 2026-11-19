@@ -1,17 +1,34 @@
+
+import subprocess
+import sys
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 from FakeNews import criar_grade
-from sequencial import simular, contar_estados
+from sequencial import simular as simular_sequencial, contar_estados
+from paralelo import simular as simular_paralela
+from distribuido import simular as simular_distribuida
+
+from melhorias import (
+    simular_influenciadores,
+    simular_resistencia,
+    simular_com_estatisticas,
+)
 
 
-def ler_inteiro(mensagem, minimo=1):
-    """Solicita um numero inteiro valido ao usuario."""
+def ler_inteiro(mensagem, minimo=1, maximo=None):
+    """Le um numero inteiro dentro dos limites permitidos."""
     while True:
         try:
             valor = int(input(mensagem))
 
             if valor < minimo:
                 print(f"Digite um numero maior ou igual a {minimo}.")
+                continue
+
+            if maximo is not None and valor > maximo:
+                print(f"Digite um numero menor ou igual a {maximo}.")
                 continue
 
             return valor
@@ -21,7 +38,7 @@ def ler_inteiro(mensagem, minimo=1):
 
 
 def ler_percentual(mensagem):
-    """Solicita um percentual entre 0 e 100."""
+    """Le um percentual entre 0 e 100."""
     while True:
         try:
             valor = float(input(mensagem).replace(",", "."))
@@ -36,26 +53,18 @@ def ler_percentual(mensagem):
 
 
 def configurar_simulacao():
-    """Recebe os parametros da simulacao."""
+    """Solicita os parametros da simulacao."""
     print("\n=== CONFIGURACAO DA SIMULACAO ===")
 
     linhas = ler_inteiro("Quantidade de linhas: ")
     colunas = ler_inteiro("Quantidade de colunas: ")
-    geracoes = ler_inteiro("Numero maximo de geracoes: ", 0)
+    geracoes = ler_inteiro("Numero maximo de geracoes: ", minimo=0)
 
     percentual = ler_percentual(
         "Percentual inicial de espalhadores (0 a 100): "
     )
 
-    limiar = ler_inteiro(
-        "Limiar de convencimento (1 a 8): "
-    )
-
-    while limiar > 8:
-        print("O limiar nao pode ultrapassar 8.")
-        limiar = ler_inteiro(
-            "Limiar de convencimento (1 a 8): "
-        )
+    limiar = ler_inteiro("Limiar (1 a 8): ", minimo=1, maximo=8)
 
     return {
         "linhas": linhas,
@@ -63,59 +72,237 @@ def configurar_simulacao():
         "geracoes": geracoes,
         "percentual": percentual,
         "limiar": limiar,
-        "semente": 42
+        "semente": 42,
     }
 
 
-def executar_sequencial():
-    """Executa a versao sequencial da simulacao."""
+def mostrar_contagem(grade):
+    """Exibe as quantidades e percentuais de cada estado."""
+    contagem = contar_estados(grade)
+
+    total = len(grade) * len(grade[0])
+
+    print(f"Total de individuos: {total}")
+    print(
+        f"Ignorantes: {contagem[0]} "
+        f"({contagem[0] / total * 100:.2f}%)"
+    )
+    print(
+        f"Espalhadores: {contagem[1]} "
+        f"({contagem[1] / total * 100:.2f}%)"
+    )
+    print(
+        f"Inativos: {contagem[2]} "
+        f"({contagem[2] / total * 100:.2f}%)"
+    )
+
+
+def executar_simulacao(tipo):
+    """Executa a versao sequencial, paralela ou distribuida."""
     parametros = configurar_simulacao()
+
+    trabalhadores = 1
+
+    if tipo in ("paralela", "distribuida"):
+        trabalhadores = ler_inteiro(
+            "Quantidade de trabalhadores: ",
+            minimo=1,
+            maximo=parametros["linhas"],
+        )
 
     grade_inicial = criar_grade(
         linhas=parametros["linhas"],
         colunas=parametros["colunas"],
         percentual_espalhadores=parametros["percentual"],
-        semente=parametros["semente"]
+        semente=parametros["semente"],
     )
-
-    contagem_inicial = contar_estados(grade_inicial)
 
     print("\n=== ESTADO INICIAL ===")
-    print(f"Ignorantes: {contagem_inicial[0]}")
-    print(f"Espalhadores: {contagem_inicial[1]}")
-    print(f"Inativos: {contagem_inicial[2]}")
+    mostrar_contagem(grade_inicial)
 
-    print("\nExecutando simulacao sequencial...")
+    if tipo == "distribuida":
+        print("\nATENCAO: os workers devem estar iniciados.")
+        print("Por padrao, sao usadas as portas 5000 em diante.")
+        print("Exemplo para dois workers:")
+        print("  python3 worker.py --porta 5000")
+        print("  python3 worker.py --porta 5001")
 
-    # O tempo medido nao inclui a criacao da matriz.
+        input("\nPressione ENTER para iniciar a simulacao...")
+
+    executores = {
+        "sequencial": simular_sequencial,
+        "paralela": simular_paralela,
+        "distribuida": simular_distribuida,
+    }
+
+    executor = executores[tipo]
+
+    print(f"\nExecutando versao {tipo}...")
+
     inicio = time.perf_counter()
 
-    grade_final = simular(
-        grade_inicial=grade_inicial,
-        geracoes=parametros["geracoes"],
-        limiar=parametros["limiar"],
-        trabalhadores=1
-    )
+    try:
+        grade_final = executor(
+            grade_inicial=grade_inicial,
+            geracoes=parametros["geracoes"],
+            limiar=parametros["limiar"],
+            trabalhadores=trabalhadores,
+        )
 
-    fim = time.perf_counter()
+    except (OSError, ConnectionError, TimeoutError, RuntimeError) as erro:
+        print(f"\nErro durante a simulacao: {erro}")
 
-    tempo_total = fim - inicio
-    contagem_final = contar_estados(grade_final)
+        if tipo == "distribuida":
+            print("Confira se todos os workers estao ativos.")
 
-    total = parametros["linhas"] * parametros["colunas"]
+        return
+
+    tempo_total = time.perf_counter() - inicio
 
     print("\n=== RESULTADO FINAL ===")
-    print(f"Total de individuos: {total}")
-    print(f"Ignorantes: {contagem_final[0]}")
-    print(f"Espalhadores: {contagem_final[1]}")
-    print(f"Inativos: {contagem_final[2]}")
+    mostrar_contagem(grade_final)
 
     print(f"\nTempo de execucao: {tempo_total:.6f} segundos")
 
-    print("\nPercentuais finais:")
-    print(f"Ignorantes: {contagem_final[0] / total * 100:.2f}%")
-    print(f"Espalhadores: {contagem_final[1] / total * 100:.2f}%")
-    print(f"Inativos: {contagem_final[2] / total * 100:.2f}%")
+
+def executar_benchmark():
+    """Executa o benchmark rapido das tres versoes oficiais."""
+    print("\n=== BENCHMARK DAS TRES VERSOES ===")
+    print("Versoes: sequencial, paralela e distribuida")
+    print("Matrizes: 5x5 e 10x10")
+    print("Trabalhadores: 2")
+    print("Repeticoes: 2")
+    print("\nATENCAO: dois workers devem estar ativos.")
+    print("Portas padrao: 5000 e 5001.")
+    print("O benchmark nao inicia os workers automaticamente.")
+
+    confirmar = input("\nExecutar benchmark? (s/n): ").strip().lower()
+
+    if confirmar != "s":
+        print("\nBenchmark cancelado.")
+        return
+
+    pasta_projeto = Path(__file__).resolve().parent
+    pasta_resultados = pasta_projeto / "resultados"
+    pasta_resultados.mkdir(exist_ok=True)
+
+    instante = datetime.now(timezone.utc).strftime(
+        "%Y%m%d_%H%M%S_%f"
+    )
+
+    arquivo_saida = pasta_resultados / (
+        f"benchmark_integracao_{instante}.csv"
+    )
+
+    comando = [
+        sys.executable,
+        "-B",
+        str(pasta_projeto / "benchmark.py"),
+        "--rapido",
+        "--versoes",
+        "sequencial",
+        "paralela",
+        "distribuida",
+        "--trabalhadores",
+        "2",
+        "--saida",
+        str(arquivo_saida),
+    ]
+
+    print("\nExecutando benchmark oficial...\n")
+
+    try:
+        subprocess.run(
+            comando,
+            check=True,
+            cwd=pasta_projeto,
+        )
+
+        print("\n=== BENCHMARK CONCLUIDO ===")
+        print(f"Arquivo CSV: {arquivo_saida}")
+
+    except subprocess.CalledProcessError as erro:
+        print(f"\nBenchmark terminou com erro: {erro}")
+
+    except OSError as erro:
+        print(f"\nNao foi possivel executar o benchmark: {erro}")
+
+
+def imprimir_grade(grade):
+    """Exibe uma matriz no terminal."""
+    for linha in grade:
+        print(linha)
+
+
+def executar_melhorias():
+    """Demonstra influenciadores, resistencia e estatisticas."""
+    print("\n=== DEMONSTRACAO DAS MELHORIAS ===")
+
+    grade_inicial = [
+        [0, 1, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+    ]
+
+    influenciadores = {(0, 1)}
+    resistentes = {(1, 1)}
+
+    print("\nGrade inicial:")
+    imprimir_grade(grade_inicial)
+
+    resultado_original = simular_sequencial(
+        grade_inicial=grade_inicial,
+        geracoes=1,
+        limiar=3,
+        trabalhadores=1,
+    )
+
+    print("\nModelo original:")
+    imprimir_grade(resultado_original)
+
+    resultado_influenciadores = simular_influenciadores(
+        grade_inicial=grade_inicial,
+        geracoes=1,
+        limiar=3,
+        influenciadores=influenciadores,
+        peso=3,
+    )
+
+    print("\nCom influenciadores:")
+    imprimir_grade(resultado_influenciadores)
+
+    resultado_resistencia = simular_resistencia(
+        grade_inicial=grade_inicial,
+        geracoes=1,
+        limiar=3,
+        resistentes=resistentes,
+        resistencia_extra=2,
+        influenciadores=influenciadores,
+        peso=3,
+    )
+
+    print("\nCom resistencia:")
+    imprimir_grade(resultado_resistencia)
+
+    _, historico = simular_com_estatisticas(
+        grade_inicial=grade_inicial,
+        geracoes=5,
+        limiar=3,
+        resistentes=resistentes,
+        resistencia_extra=2,
+        influenciadores=influenciadores,
+        peso=3,
+    )
+
+    print("\nEstatisticas por geracao:")
+
+    for registro in historico:
+        print(
+            f"Geracao {registro['geracao']}: "
+            f"Ignorantes={registro['ignorantes']}, "
+            f"Espalhadores={registro['espalhadores']}, "
+            f"Inativos={registro['inativos']}"
+        )
 
 
 def mostrar_menu():
@@ -126,7 +313,8 @@ def mostrar_menu():
     print("1 - Executar simulacao sequencial")
     print("2 - Executar simulacao paralela")
     print("3 - Executar simulacao distribuida")
-    print("4 - Comparar resultados (benchmark)")
+    print("4 - Executar benchmark rapido")
+    print("5 - Demonstrar melhorias")
     print("0 - Sair")
 
 
@@ -135,26 +323,34 @@ def main():
     while True:
         mostrar_menu()
 
-        opcao = input("\nEscolha uma opcao: ").strip()
+        try:
+            opcao = input("\nEscolha uma opcao: ").strip()
 
-        if opcao == "1":
-            executar_sequencial()
+            if opcao == "1":
+                executar_simulacao("sequencial")
 
-        elif opcao == "2":
-            print("\nVersao paralela ainda nao integrada.")
+            elif opcao == "2":
+                executar_simulacao("paralela")
 
-        elif opcao == "3":
-            print("\nVersao distribuida ainda nao integrada.")
+            elif opcao == "3":
+                executar_simulacao("distribuida")
 
-        elif opcao == "4":
-            print("\nBenchmark ainda nao integrado.")
+            elif opcao == "4":
+                executar_benchmark()
 
-        elif opcao == "0":
-            print("\nEncerrando programa...")
+            elif opcao == "5":
+                executar_melhorias()
+
+            elif opcao == "0":
+                print("\nEncerrando programa...")
+                break
+
+            else:
+                print("\nOpcao invalida. Tente novamente.")
+
+        except (KeyboardInterrupt, EOFError):
+            print("\nPrograma encerrado pelo usuario.")
             break
-
-        else:
-            print("\nOpcao invalida. Tente novamente.")
 
 
 if __name__ == "__main__":
