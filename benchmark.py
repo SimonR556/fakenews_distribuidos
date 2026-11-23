@@ -346,6 +346,74 @@ def coletar_hardware_linux():
     return hardware
 
 
+def coletar_hardware_windows():
+    """Consulta registro e APIs nativas; não estima núcleos a partir de threads.
+
+    GetLogicalProcessorInformationEx(RelationProcessorCore) fornece um registro
+    por núcleo ativo. GlobalMemoryStatusEx informa a RAM física total visível.
+    Falhas deixam somente o campo correspondente desconhecido.
+    """
+    import ctypes
+    from ctypes import wintypes
+    import winreg
+
+    hardware = {"cpu": platform.processor(), "nucleos_fisicos": None, "ram_bytes": None}
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as chave:
+            hardware["cpu"] = winreg.QueryValueEx(chave, "ProcessorNameString")[0].strip()
+    except OSError:
+        pass
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    try:
+        consultar = kernel.GetLogicalProcessorInformationEx
+        consultar.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(wintypes.DWORD)]
+        consultar.restype = wintypes.BOOL
+        tamanho = wintypes.DWORD()
+        if not consultar(0, None, ctypes.byref(tamanho)) and ctypes.get_last_error() != 122:
+            raise ctypes.WinError(ctypes.get_last_error())
+        if not 0 < tamanho.value <= 16 * 1024 * 1024:
+            raise ValueError("Tamanho da topologia inválido.")
+        dados = ctypes.create_string_buffer(tamanho.value)
+        if not consultar(0, dados, ctypes.byref(tamanho)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        posicao = nucleos = 0
+        while posicao < tamanho.value:
+            if posicao + 8 > tamanho.value:
+                raise ValueError("Cabeçalho de topologia incompleto.")
+            relacao = wintypes.DWORD.from_buffer(dados, posicao).value
+            comprimento = wintypes.DWORD.from_buffer(dados, posicao + 4).value
+            if comprimento < 8 or posicao + comprimento > tamanho.value:
+                raise ValueError("Registro de topologia inválido.")
+            nucleos += int(relacao == 0)
+            posicao += comprimento
+        if 1 <= nucleos <= (os.cpu_count() or 0):
+            hardware["nucleos_fisicos"] = nucleos
+    except (OSError, ValueError, AttributeError):
+        pass
+
+    class EstadoMemoria(ctypes.Structure):
+        _fields_ = [("tamanho", wintypes.DWORD), ("carga", wintypes.DWORD)] + [
+            (nome, ctypes.c_ulonglong) for nome in (
+                "total_fisica", "livre_fisica", "total_paginacao", "livre_paginacao",
+                "total_virtual", "livre_virtual", "livre_estendida",
+            )
+        ]
+
+    try:
+        memoria = EstadoMemoria()
+        memoria.tamanho = ctypes.sizeof(memoria)
+        consultar_memoria = kernel.GlobalMemoryStatusEx
+        consultar_memoria.argtypes = [ctypes.POINTER(EstadoMemoria)]
+        consultar_memoria.restype = wintypes.BOOL
+        if consultar_memoria(ctypes.byref(memoria)) and memoria.total_fisica > 0:
+            hardware["ram_bytes"] = memoria.total_fisica
+    except (OSError, AttributeError):
+        pass
+    return hardware
+
+
 def coletar_ambiente():
     """Registra ambiente e commit fora da medição; desconhecidos ficam vazios."""
     try:
@@ -355,8 +423,12 @@ def coletar_ambiente():
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         commit = "desconhecido"
-    hardware = (coletar_hardware_linux() if platform.system() == "Linux" else
-                {"cpu": platform.processor(), "nucleos_fisicos": None, "ram_bytes": None})
+    if platform.system() == "Linux":
+        hardware = coletar_hardware_linux()
+    elif platform.system() == "Windows":
+        hardware = coletar_hardware_windows()
+    else:
+        hardware = {"cpu": platform.processor(), "nucleos_fisicos": None, "ram_bytes": None}
     return {
         "data_utc": datetime.now(timezone.utc).isoformat(),
         "commit": commit,
