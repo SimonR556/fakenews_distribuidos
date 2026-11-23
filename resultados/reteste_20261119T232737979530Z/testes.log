@@ -1,0 +1,58 @@
+test_01_contagem_vizinhos (testes.TestesSequencial.test_01_contagem_vizinhos)
+Conta corretamente os vizinhos espalhadores. ... ok
+test_02_espalhador_vira_inativo (testes.TestesSequencial.test_02_espalhador_vira_inativo)
+Espalhadores deixam de compartilhar apos uma geracao. ... ok
+test_03_ignorante_vira_espalhador (testes.TestesSequencial.test_03_ignorante_vira_espalhador)
+Ignorante com vizinhos suficientes vira espalhador. ... ok
+test_04_inativo_permanece_inativo (testes.TestesSequencial.test_04_inativo_permanece_inativo)
+Uma pessoa inativa nao muda de estado. ... ok
+test_05_sem_espalhadores (testes.TestesSequencial.test_05_sem_espalhadores)
+Uma matriz sem espalhadores permanece igual. ... ok
+test_06_todos_espalhadores (testes.TestesSequencial.test_06_todos_espalhadores)
+Todos os espalhadores tornam-se inativos. ... ok
+test_07_zero_geracoes (testes.TestesSequencial.test_07_zero_geracoes)
+Zero geracoes nao altera o resultado. ... ok
+test_08_preserva_matriz_original (testes.TestesSequencial.test_08_preserva_matriz_original)
+A funcao nao pode modificar a entrada. ... ok
+test_09_equivalencia_5x5 (testes.TestesSequencial.test_09_equivalencia_5x5)
+Compara a proxima geracao com o codigo original. ... ok
+test_10_equivalencia_10x10 (testes.TestesSequencial.test_10_equivalencia_10x10)
+Compara varias geracoes com o codigo original. ... ok
+test_11_cenario_padrao_100x100 (testes.TestesSequencial.test_11_cenario_padrao_100x100)
+Valida o resultado documentado pelo grupo. ... ok
+test_12_limiar_elevado (testes.TestesSequencial.test_12_limiar_elevado)
+Sem vizinhos suficientes, nao ha novos espalhadores. ... ok
+test_13_bordas_da_matriz (testes.TestesSequencial.test_13_bordas_da_matriz)
+Verifica se os cantos nao acessam posicoes invalidas. ... ok
+test_cenario_padrao_100x100 (testes_distribuido.TestesDistribuido.test_cenario_padrao_100x100) ... ok
+test_contagio_nas_fronteiras (testes_distribuido.TestesDistribuido.test_contagio_nas_fronteiras) ... ok
+test_sem_espalhadores_e_limiar_zero (testes_distribuido.TestesDistribuido.test_sem_espalhadores_e_limiar_zero) ... ok
+test_tamanhos_e_divisao_com_sobra (testes_distribuido.TestesDistribuido.test_tamanhos_e_divisao_com_sobra) ... ok
+test_workers_reutilizados_entre_simulacoes (testes_distribuido.TestesDistribuido.test_workers_reutilizados_entre_simulacoes) ... ok
+test_zero_geracoes_nao_abre_conexoes (testes_distribuido.TestesDistribuido.test_zero_geracoes_nao_abre_conexoes) ... ok
+test_01_equivalencia_5x5 (testes_integracao.TestesIntegracao.test_01_equivalencia_5x5) ... ok
+test_02_equivalencia_10x10 (testes_integracao.TestesIntegracao.test_02_equivalencia_10x10) ... ok
+test_03_equivalencia_100x100 (testes_integracao.TestesIntegracao.test_03_equivalencia_100x100) ... ok
+test_04_zero_geracoes (testes_integracao.TestesIntegracao.test_04_zero_geracoes) ... ok
+test_01_influenciador_tem_peso_maior (testes_melhorias.TestesMelhorias.test_01_influenciador_tem_peso_maior) ... ok
+test_02_espalhador_comum_tem_peso_um (testes_melhorias.TestesMelhorias.test_02_espalhador_comum_tem_peso_um) ... ok
+test_03_influenciador_convence_vizinhos (testes_melhorias.TestesMelhorias.test_03_influenciador_convence_vizinhos) ... ok
+test_04_resistente_nao_e_convencido (testes_melhorias.TestesMelhorias.test_04_resistente_nao_e_convencido) ... ok
+test_05_matriz_original_preservada (testes_melhorias.TestesMelhorias.test_05_matriz_original_preservada) ... ok
+test_06_zero_geracoes (testes_melhorias.TestesMelhorias.test_06_zero_geracoes) ... ok
+test_07_sem_melhorias_equivale_ao_original (testes_melhorias.TestesMelhorias.test_07_sem_melhorias_equivale_ao_original) ... ok
+test_08_estatisticas_iniciais (testes_melhorias.TestesMelhorias.test_08_estatisticas_iniciais) ... ok
+test_09_estatisticas_finais (testes_melhorias.TestesMelhorias.test_09_estatisticas_finais) ... ok
+test_10_total_populacao_constante (testes_melhorias.TestesMelhorias.test_10_total_populacao_constante) ... ok
+test_11_bordas_sem_contorno_periodico (testes_melhorias.TestesMelhorias.test_11_bordas_sem_contorno_periodico) ... ok
+test_12_inativos_permanecem_inativos (testes_melhorias.TestesMelhorias.test_12_inativos_permanecem_inativos) ... ok
+test_13_parada_antecipada (testes_melhorias.TestesMelhorias.test_13_parada_antecipada) ... ok
+test_14_estatisticas_zero_geracoes (testes_melhorias.TestesMelhorias.test_14_estatisticas_zero_geracoes) ... ok
+test_configuracao_distribuida_invalida_volta_ao_menu (testes_regressao.TestesRegressao.test_configuracao_distribuida_invalida_volta_ao_menu) ... ok
+test_erro_em_thread_nao_bloqueia_demais_threads (testes_regressao.TestesRegressao.test_erro_em_thread_nao_bloqueia_demais_threads) ... ok
+test_grade_irregular_rejeitada_antes_das_threads (testes_regressao.TestesRegressao.test_grade_irregular_rejeitada_antes_das_threads) ... ok
+
+----------------------------------------------------------------------
+Ran 40 tests in 3.018s
+
+OK

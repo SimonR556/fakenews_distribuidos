@@ -10,18 +10,18 @@ O original verifica a ausência de espalhadores **após** atualizar e contar a g
 
 `criar_grade` usa sorteios com reposição: uma mesma posição pode ser sorteada várias vezes. Não substituir por amostragem de posições únicas em apenas uma versão.
 
-## Pendências para combinar antes da integração
+## Interfaces e configuração integradas
 
-Estas são propostas, não alterações já aprovadas do contrato:
+As funções públicas `simular` preservam o contrato de quatro parâmetros.
 
-1. **Estatísticas:** acrescentar uma função auxiliar `simular_com_estatisticas(...)` que retorne matriz e gerações executadas, mantendo `simular(...)` com retorno somente da matriz. Definir um formato único antes de conectar o benchmark. Não usar contagem inferida da matriz final.
-2. **Entradas inválidas:** definir tratamento de matriz vazia ou irregular, estados inválidos, gerações negativas, limiar fora da faixa escolhida e trabalhadores não positivos. Testar também mais trabalhadores do que linhas e divisão com resto.
-3. **Configuração distribuída:** definir como fornecer hosts/portas sem quebrar os quatro parâmetros comuns, e como iniciar/encerrar workers em localhost.
-4. **Cronometragem:** definir a inclusão dos custos de inicialização, conexão e encerramento. Se houver tempo total e tempo com workers já prontos, identificá-los separadamente.
+- **Gerações:** `paralelo.simular_com_detalhes` e `distribuido.simular_com_estatisticas` retornam `(grade_final, geracoes_executadas)`. O benchmark conta gerações do sequencial em execução diagnóstica separada, fora do cronômetro. `melhorias.simular_com_estatisticas` retorna histórico, não uma contagem inteira.
+- **Entradas inválidas:** o distribuído valida matriz, estados e parâmetros. O paralelo rejeita linhas vazias ou irregulares antes de iniciar threads; aceita grade vazia e limita threads ao número de linhas. A validação completa ainda não é uniforme entre versões. O menu gera matrizes válidas e limita trabalhadores ao número de linhas.
+- **Configuração distribuída:** `FAKENEWS_WORKERS` define endereços `host:porta`, em quantidade igual aos trabalhadores. Sem a variável, usam-se portas locais a partir de 5000. Consulte [DISTRIBUIDO.md](DISTRIBUIDO.md).
+- **Cronometragem:** mede-se a chamada completa. Threads são criadas e encerradas dentro dela; processos TCP ficam previamente iniciados. Conexões, transmissão e encerramento das conexões entram no tempo distribuído. Comparar somente dados com a mesma política registrada.
 
-## Arquitetura sugerida para a parte distribuída
+## Arquitetura da parte distribuída
 
-Esta seção orienta a implementação futura; não descreve código já disponível.
+Os itens abaixo descrevem a arquitetura implementada.
 
 - `distribuido.py`: coordenador divide a matriz em faixas contíguas de linhas, envia tarefas, reúne respostas e decide a parada global.
 - `worker.py`: processo separado calcula apenas suas linhas, lendo também uma linha de fronteira acima e outra abaixo, quando existirem.
@@ -39,8 +39,8 @@ Para 100 linhas e quatro trabalhadores, usando índices a partir de zero:
 | 2 | 50–74 | 49 e 75 |
 | 3 | 75–99 | 74 |
 
-**Proposta de protocolo:** TCP com cabeçalho de quatro bytes sem sinal em ordem de rede (`struct.pack("!I", tamanho)`) e corpo JSON em UTF-8. O tamanho deve ser o número de bytes codificados, não o número de caracteres. Usar envio completo e leitura em laço tanto do cabeçalho quanto do corpo: um `recv` não equivale necessariamente a uma mensagem inteira. Documentar limite de tamanho, desconexões e timeouts.
+**Protocolo implementado:** TCP com cabeçalho de quatro bytes sem sinal em ordem de rede (`struct.pack("!I", tamanho)`) e corpo JSON em UTF-8. O tamanho deve ser o número de bytes codificados, não o número de caracteres. Usar envio completo e leitura em laço tanto do cabeçalho quanto do corpo: um `recv` não equivale necessariamente a uma mensagem inteira. Documentar limite de tamanho, desconexões e timeouts.
 
-O formato definitivo deve documentar versão do protocolo, tipo de mensagem, geração, início da faixa, quantidade de linhas, limiar, dados e fronteiras; a resposta identifica a mesma tarefa e inclui apenas as linhas calculadas. Prever encerramento e erro explícitos.
+As mensagens incluem tipo, geração, início da faixa, linhas, limiar e fronteiras; a resposta identifica a tarefa e contém apenas as linhas calculadas. Há mensagens de encerramento e confirmação. Ainda não existe um campo explícito de versão do protocolo; veja tipos e limitações em DISTRIBUIDO.md.
 
 Começar em `127.0.0.1`. Para múltiplas máquinas, documentar endereço de escuta, IP acessível, porta TCP, ordem de inicialização e conectividade de rede. Usar uma rede confiável; este protocolo acadêmico ainda não define autenticação ou criptografia. Manter processos vivos entre gerações é uma possível otimização a medir.

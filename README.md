@@ -325,13 +325,13 @@ As três implementações apresentaram as mesmas contagens finais:
 | Espalhadores | 0 |
 | Inativos | 18 |
 
-O benchmark oficial também foi executado com sucesso, realizando 12 medições e verificando as matrizes, as contagens e as entradas dos cenários utilizados.
+O benchmark rápido da integração realizou 12 medições. A bateria oficial posterior contém **162 medições**, com matrizes 100×100, 300×300 e 500×500, percentuais 5% e 40%, três repetições e 1, 2, 4 e 6 trabalhadores nas versões paralela e distribuída. Consulte [o relatório oficial](resultados/RELATORIO_FINAL.md).
 
 Nos cenários pequenos testados, a implementação sequencial apresentou os menores tempos de execução.
 
 Esse resultado é compatível com os custos adicionais de sincronização entre threads e comunicação entre processos.
 
-Entretanto, os cenários rápidos executaram apenas uma geração. Portanto, esses resultados não são suficientes para concluir qual implementação apresenta melhor escalabilidade em situações maiores.
+Os cenários rápidos executaram apenas uma geração. A bateria oficial executou três ou cinco gerações, mas manteve o limite máximo em 50. A coleta complementar foi executada no Windows com o código corrigido: **486 medições**, limites 1, 2 e 5, trabalhadores 1, 2, 4 e 8, três repetições. Foram produzidos 162 grupos, 144 comparações e 90 gráficos. Consulte [o relatório do reteste](resultados/reteste_20261119T232737979530Z/RELATORIO.md). Os baselines são da própria coleta; os resultados anteriores no Linux permanecem separados.
 
 ## 11. Testes automatizados
 
@@ -343,9 +343,9 @@ Para executar os testes:
 python3 -m unittest discover -v
 ```
 
-Na validação local realizada durante a integração, foram aprovados 27 testes automatizados.
+Na revisão local, foram aprovados **40 testes automatizados** em Python 3.14.6 no Windows.
 
-Os testes existentes abrangem o comportamento sequencial e as melhorias opcionais.
+Os testes abrangem o sequencial, a integração com threads, as melhorias, as regressões do menu e da sincronização e a comunicação TCP real com workers locais. `testes_distribuido.py` inicia workers próprios em portas temporárias e encerra somente esses processos ao final; não exige iniciar servidores manualmente.
 
 A equivalência entre as implementações também foi verificada pelo benchmark oficial nos cenários executados.
 

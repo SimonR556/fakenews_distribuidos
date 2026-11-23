@@ -21,7 +21,7 @@
 5. Comparar as matrizes célula por célula, além das contagens e gerações realmente executadas.
 6. Verificar que cada entrada permaneceu intacta. Encerrar após uma geração sem espalhadores, como no original.
 
-A igualdade das contagens sozinha não comprova a igualdade das matrizes. O registro das gerações das novas versões depende da interface complementar pendente em [CONTRATO.md](CONTRATO.md).
+A igualdade das contagens sozinha não comprova a igualdade das matrizes. As interfaces auxiliares e o diagnóstico sequencial usados para contar gerações estão descritos em [CONTRATO.md](CONTRATO.md).
 
 ## Referência verificada no original
 
@@ -36,17 +36,10 @@ O arquivo original foi executado em Python 3.14.6, com os parâmetros padrão de
 
 São **três gerações efetivas**. As 500 tentativas de posicionamento produzem 490 espalhadores distintos, pois há sorteios repetidos. Estes valores são uma referência de correção, não resultados das implementações do grupo. O tempo do original inclui impressão e não foi adotado como resultado comparativo.
 
-## Registro a preencher após a implementação
+## Validação integrada
 
-| Versão | Tempo (s) | Gerações | Ignorantes | Espalhadores | Inativos |
-| --- | --- | --- | --- | --- | --- |
-| Sequencial refatorada | Pendente | Pendente | Pendente | Pendente | Pendente |
-| Paralela | Pendente | Pendente | Pendente | Pendente | Pendente |
-| Distribuída | Pendente | Pendente | Pendente | Pendente | Pendente |
+A suíte `python -B -m unittest discover -v` inclui testes sequenciais, paralelos e TCP distribuídos com comparação de matrizes e preservação da entrada. O teste distribuído padrão usa 100×100, fração 0,05, semente 42, limiar 3 e quatro workers, comparando também as três gerações efetivas com o original.
 
-- Matrizes finais idênticas: pendente.
-- Entradas preservadas: pendente.
-- Ambiente e commit: preencher na execução.
-- Observações: preencher na execução.
+Os tempos oficiais e o ambiente da coleta anterior estão em [RELATORIO_FINAL.md](../resultados/RELATORIO_FINAL.md). Esses tempos identificam as fontes anteriores à correção da sincronização; novas medições devem ser armazenadas separadamente, conforme [REVISAO.md](REVISAO.md).
 
 Também testar 5 × 5, 10 × 10, cantos e bordas, contágio entre faixas, divisão de linhas com resto, zero gerações e ausência inicial de espalhadores. O teste padrão verifica correção; os benchmarks devem variar cenários e repetir execuções. Como a propagação termina cedo neste cenário, aumentar apenas o limite de 50 para 100 não aumenta necessariamente o trabalho realizado.
