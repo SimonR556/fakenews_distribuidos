@@ -149,11 +149,11 @@ def executar_simulacao(tipo):
             trabalhadores=trabalhadores,
         )
 
-    except (OSError, ConnectionError, TimeoutError, RuntimeError) as erro:
+    except (OSError, RuntimeError, ValueError) as erro:
         print(f"\nErro durante a simulacao: {erro}")
 
         if tipo == "distribuida":
-            print("Confira se todos os workers estao ativos.")
+            print("Confira os workers e a configuracao de FAKENEWS_WORKERS.")
 
         return
 

@@ -9,13 +9,11 @@ sequencial (sem atualização em tempo real).
 Sincronização:
 - Todas as threads leem a mesma matriz de entrada (`grade`).
 - Cada thread escreve em um subconjunto disjunto de linhas da `nova_grade`.
-- Uma barreira sincroniza o fim da geração: todas as threads devem concluir
-  antes que a próxima geração seja iniciada.
+- O coordenador aguarda todos os resultados antes de iniciar a próxima geração.
 """
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from threading import Barrier
 
 IGNORANTE = 0
 ESPALHADOR = 1
@@ -64,7 +62,7 @@ def _distribuir_linhas(total_linhas, numero_threads):
     return faixas
 
 
-def _processar_linhas(grade, proxima_grade, inicio, fim, limiar, barreira):
+def _processar_linhas(grade, proxima_grade, inicio, fim, limiar):
     """Calcula uma fatia de linhas da próxima geração.
 
     Cada thread acessa somente a matriz de entrada atual (`grade`) e grava uma
@@ -91,9 +89,6 @@ def _processar_linhas(grade, proxima_grade, inicio, fim, limiar, barreira):
             elif estado == INATIVO:
                 proxima_grade[i][j] = INATIVO
 
-    # Sincroniza o fim do processamento da geração antes de avançar.
-    barreira.wait()
-
 
 def proxima_geracao(grade, limiar=2, trabalhadores=4):
     """Calcula a próxima geração usando threads.
@@ -104,12 +99,17 @@ def proxima_geracao(grade, limiar=2, trabalhadores=4):
     if not grade:
         return []
 
+    if (not isinstance(grade, list)
+            or any(not isinstance(linha, list) or not linha for linha in grade)):
+        raise ValueError("A grade deve conter linhas não vazias em listas.")
+    if any(len(linha) != len(grade[0]) for linha in grade):
+        raise ValueError("Todas as linhas devem ter o mesmo tamanho.")
+
     linhas = len(grade)
     colunas = len(grade[0])
     proxima_grade = deepcopy(grade)
 
     faixas = _distribuir_linhas(linhas, trabalhadores)
-    barreira = Barrier(len(faixas))
 
     with ThreadPoolExecutor(max_workers=len(faixas)) as executor:
         tarefas = [
@@ -120,11 +120,12 @@ def proxima_geracao(grade, limiar=2, trabalhadores=4):
                 inicio,
                 fim,
                 limiar,
-                barreira,
             )
             for inicio, fim in faixas
         ]
 
+        # Aguarda todas as faixas; exceções chegam ao coordenador sem deixar
+        # outras threads bloqueadas em uma barreira interna.
         for tarefa in tarefas:
             tarefa.result()
 
